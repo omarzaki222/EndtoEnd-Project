@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: end-to-end-app
+  namespace: flask-app
+  labels:
+    app: end-to-end-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: end-to-end-app
+  template:
+    metadata:
+      labels:
+        app: end-to-end-app
+    spec:
+      containers:
+        - name: end-to-end-container
+          image: omarzaki222/end-to-end-project:0.1.2
+          ports:
+            - containerPort: 8000
+          volumeMounts:
+            - mountPath: /app/data
+              name: app-storage
+      volumes:
+        - name: app-storage
+          persistentVolumeClaim:
+            claimName: end-to-end-pvc
