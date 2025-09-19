@@ -1,0 +1,32 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: end-to-end-app
+  namespace: argocd
+  labels:
+    app: end-to-end-app
+    project: default
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/omarzaki222/EndtoEnd-Project.git
+    targetRevision: HEAD
+    path: mainfest
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: flask-app
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+  revisionHistoryLimit: 10

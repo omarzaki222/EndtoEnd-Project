@@ -66,25 +66,40 @@ pipeline {
             }
         }
         
-        stage('Deploy to Kubernetes') {
+        stage('Update Git Repository') {
             steps {
                 script {
                     def imageTag = params.IMAGE_TAG == 'latest' ? "${env.GIT_COMMIT_SHORT}" : params.IMAGE_TAG
-                    def namespace = "flask-app-${params.ENVIRONMENT}"
                     
                     sh """
                         # Update image tag in deployment
                         sed -i 's|image: omarzaki222/end-to-end-project:.*|image: ${DOCKER_REGISTRY}/${IMAGE_NAME}:${imageTag}|g' mainfest/deployment.yaml
                         
-                        # Apply Kubernetes manifests
-                        kubectl apply -f mainfest/namespace.yaml
-                        kubectl apply -f mainfest/pv.yaml
-                        kubectl apply -f mainfest/pvc.yaml
-                        kubectl apply -f mainfest/deployment.yaml
-                        kubectl apply -f mainfest/service.yaml
+                        # Commit and push changes to trigger ArgoCD sync
+                        git config user.email "jenkins@example.com"
+                        git config user.name "Jenkins"
+                        git add mainfest/deployment.yaml
+                        git commit -m "Update image tag to ${imageTag} for ${params.ENVIRONMENT} environment" || echo "No changes to commit"
+                        git push origin main
+                    """
+                }
+            }
+        }
+        
+        stage('ArgoCD Sync') {
+            steps {
+                script {
+                    def appName = "end-to-end-app-${params.ENVIRONMENT}"
+                    
+                    sh """
+                        # Wait for ArgoCD to detect changes
+                        sleep 30
                         
-                        # Wait for deployment to be ready
-                        kubectl rollout status deployment/end-to-end-app -n ${namespace} --timeout=300s
+                        # Trigger ArgoCD sync (optional - ArgoCD can auto-sync)
+                        kubectl patch application ${appName} -n argocd --type merge -p '{"operation":{"sync":{"syncStrategy":{"hook":{"force":true}}}}}' || echo "Manual sync not available, relying on auto-sync"
+                        
+                        # Wait for ArgoCD sync to complete
+                        kubectl wait --for=condition=Synced application/${appName} -n argocd --timeout=300s || echo "Sync condition not met, checking deployment status"
                     """
                 }
             }

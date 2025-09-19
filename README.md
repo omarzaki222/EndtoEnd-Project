@@ -8,6 +8,8 @@ A complete Python Flask application with CI/CD pipeline using Jenkins and Kubern
 - **Docker Containerization**: Multi-stage Docker build for production
 - **Kubernetes Deployment**: Complete K8s manifests with ConfigMaps, Services, and Ingress
 - **Jenkins CI/CD Pipeline**: Automated build, test, and deployment pipeline
+- **ArgoCD GitOps**: GitOps-based continuous deployment with ArgoCD
+- **Multi-Environment Support**: Dev, staging, and production environments
 - **Persistent Storage**: PVC and PV configuration for data persistence
 - **Health Checks**: Liveness and readiness probes for container health
 
@@ -32,10 +34,19 @@ pythonapp/
 │   ├── pipeline-config.xml      # Jenkins job configuration
 │   ├── deploy.sh                # Deployment script
 │   └── build-and-push.sh        # Docker build and push script
+├── argocd/                       # ArgoCD GitOps configuration
+│   ├── application.yaml         # Main ArgoCD application
+│   ├── application-dev.yaml     # Development environment
+│   ├── application-staging.yaml # Staging environment
+│   ├── application-prod.yaml    # Production environment
+│   ├── install-argocd.sh        # ArgoCD installation script
+│   └── setup-applications.sh    # Application setup script
 ├── Dockerfile                    # Docker container configuration
 ├── Jenkinsfile                   # Jenkins pipeline definition
 ├── requirements.txt              # Python dependencies
-└── README.md                     # This file
+├── README.md                     # This file
+├── ARGOCD_SETUP.md              # ArgoCD setup guide
+└── PROJECT_NOTES.md             # Comprehensive project notes
 ```
 
 ## 🛠️ Prerequisites
@@ -76,7 +87,21 @@ kubectl get pods -n flask-app
 kubectl get svc -n flask-app
 ```
 
-### 4. Access the Application
+### 4. Set up ArgoCD GitOps (Optional)
+
+```bash
+# Install ArgoCD
+./argocd/install-argocd.sh
+
+# Create ArgoCD applications
+./argocd/setup-applications.sh
+
+# Access ArgoCD UI
+kubectl port-forward svc/argocd-server -n argocd 8080:443
+# Open: https://localhost:8080
+```
+
+### 5. Access the Application
 
 ```bash
 # Get service details
