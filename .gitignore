@@ -64,3 +64,6 @@ secrets/
 # Temporary files
 *.tmp
 *.temp
+
+# Project specific directories
+comingsoon/
