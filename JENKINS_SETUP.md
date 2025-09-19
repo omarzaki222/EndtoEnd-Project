@@ -32,7 +32,7 @@ Install the following plugins in Jenkins:
    - **Kind**: Username with password
    - **ID**: `docker-hub-credentials`
    - **Username**: Your Docker Hub username
-   - **Password**: Your Docker Hub password or access token
+   - **Password**: Your Docker Hub password
    - **Description**: Docker Hub credentials for image push
 
 ### 2. Kubernetes Configuration
