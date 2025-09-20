@@ -1,7 +1,5 @@
 pipeline {
-    agent {
-        label 'docker kubectl ubuntu'
-    }
+    agent any  // Use any available agent (the built-in Jenkins node)
     
     environment {
         DOCKER_REGISTRY = 'omarzaki222'
