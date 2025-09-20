@@ -1,0 +1,29 @@
+# Patch to add Docker support to existing Jenkins StatefulSet
+# This patch adds Docker socket mount and Docker binary to Jenkins
+
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: jenkins
+  namespace: jenkins
+spec:
+  template:
+    spec:
+      containers:
+      - name: jenkins
+        image: docker.io/jenkins/jenkins:2.504.2-jdk21
+        volumeMounts:
+        - name: docker-sock
+          mountPath: /var/run/docker.sock
+        - name: docker-bin
+          mountPath: /usr/bin/docker
+        env:
+        - name: DOCKER_HOST
+          value: unix:///var/run/docker.sock
+      volumes:
+      - name: docker-sock
+        hostPath:
+          path: /var/run/docker.sock
+      - name: docker-bin
+        hostPath:
+          path: /usr/bin/docker

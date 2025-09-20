@@ -51,9 +51,16 @@ echo "🚀 Starting Docker service..."
 systemctl start docker
 systemctl enable docker
 
-# Add jenkins user to docker group
+# Add jenkins user to docker group (if it exists)
 echo "👤 Adding jenkins user to docker group..."
-usermod -aG docker jenkins
+if id "jenkins" &>/dev/null; then
+    usermod -aG docker jenkins
+    echo "✅ Jenkins user added to docker group"
+else
+    echo "⚠️  Jenkins user does not exist on this system"
+    echo "   This is normal if Jenkins is running in a Docker container"
+    echo "   You may need to configure Docker access differently"
+fi
 
 # Verify installation
 echo "✅ Verifying Docker installation..."
