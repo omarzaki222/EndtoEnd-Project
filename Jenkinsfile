@@ -1,6 +1,11 @@
 pipeline {
     agent any  // Use any available agent (the built-in Jenkins node)
     
+    // Automatic triggers - check for changes every 5 minutes
+    triggers {
+        pollSCM('H/5 * * * *')
+    }
+    
     environment {
         DOCKER_REGISTRY = 'omarzaki222'
         IMAGE_NAME = 'end-to-end-project'
