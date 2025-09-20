@@ -234,11 +234,16 @@ spec:
 pipeline {
     agent any
     
+    // Automatic triggers - check for changes every 5 minutes
+    triggers {
+        pollSCM('H/5 * * * *')
+    }
+    
     environment {
         DOCKER_REGISTRY = 'omarzaki222'
         IMAGE_NAME = 'end-to-end-project'
-        KUBECONFIG = credentials('kubeconfig')
         DOCKER_CREDENTIALS = credentials('docker-hub-credentials')
+        GITHUB_TOKEN = credentials('github-token')
     }
     
     parameters {
@@ -369,6 +374,12 @@ pipeline {
 4. **Push to Registry**: Push image to Docker Hub
 5. **Deploy to Kubernetes**: Deploy to K8s cluster
 6. **Health Check**: Verify deployment success
+
+**Automatic Triggers**:
+- **SCM Polling**: `pollSCM('H/5 * * * *')` - checks every 5 minutes
+- **Automatic Build**: Runs when code changes are detected
+- **Default Parameters**: Uses `dev` environment and `latest` tag
+- **Continuous Integration**: Full CI/CD workflow without manual intervention
 
 ### 5. Jenkins Scripts
 

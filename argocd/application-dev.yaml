@@ -10,15 +10,9 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/omarzaki222/EndtoEnd-Project.git
+    repoURL: https://github.com/omarzaki222/EndtoEnd-Project-Manifests.git
     targetRevision: HEAD
     path: mainfest
-    kustomize:
-      commonLabels:
-        environment: dev
-      images:
-        - name: omarzaki222/end-to-end-project
-          newTag: latest
   destination:
     server: https://kubernetes.default.svc
     namespace: flask-app-dev

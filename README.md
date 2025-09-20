@@ -197,6 +197,12 @@ Go to **Manage Jenkins** → **Manage Credentials** → **Add credentials**:
    - **Branch**: `*/main`
    - **Script Path**: `Jenkinsfile`
 
+#### Automatic Pipeline Triggers
+The pipeline is configured with automatic SCM polling:
+- **Trigger**: `pollSCM('H/5 * * * *')` - checks every 5 minutes
+- **Automatic Build**: Runs when code changes are detected
+- **Default Parameters**: Uses `dev` environment and `latest` tag
+
 ### 6. Set Up Separate Manifests Repository
 
 #### Create Manifests Repository
@@ -239,6 +245,16 @@ kubectl apply -f argocd/application-prod.yaml
 
 ## 🔄 CI/CD Pipeline Flow
 
+### Automatic Workflow
+1. **Code Push** → GitHub repository
+2. **SCM Polling** → Jenkins detects changes (every 5 minutes)
+3. **Automatic Build** → Pipeline runs with default parameters
+4. **Build Docker Image** → Build with build number tag
+5. **Run Tests** → Execute application tests (optional)
+6. **Update Manifests Repository** → Update image tag in manifests
+7. **ArgoCD Sync** → Automatic deployment
+8. **Health Check** → Verify deployment success
+
 ### Pipeline Stages
 
 1. **Checkout**: Clone code from GitHub
@@ -250,6 +266,7 @@ kubectl apply -f argocd/application-prod.yaml
 
 ### Pipeline Features
 
+- **Automatic Triggers**: SCM polling every 5 minutes
 - **Automatic Image Tagging**: Uses build number and Git commit hash
 - **Multi-Environment Support**: Dev, staging, production
 - **GitOps Integration**: Updates manifests repository
