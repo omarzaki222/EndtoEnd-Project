@@ -16,10 +16,12 @@ spec:
         - name: docker-sock
           mountPath: /var/run/docker.sock
         - name: docker-bin
-          mountPath: /usr/bin/docker
+          mountPath: /usr/local/bin/docker
         env:
         - name: DOCKER_HOST
           value: unix:///var/run/docker.sock
+        - name: PATH
+          value: /usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
       volumes:
       - name: docker-sock
         hostPath:
