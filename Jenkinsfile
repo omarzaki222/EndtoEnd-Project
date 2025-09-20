@@ -76,18 +76,42 @@ pipeline {
                     
                     sh """
                         # Clone the manifests repository
+                        echo "Cloning manifests repository..."
                         git clone https://github.com/omarzaki222/EndtoEnd-Project-Manifests.git manifests-repo
                         cd manifests-repo
                         
-                        # Update image tag in deployment
-                        sed -i 's|image: omarzaki222/end-to-end-project:.*|image: ${DOCKER_REGISTRY}/${IMAGE_NAME}:${imageTag}|g' mainfest/deployment.yaml
+                        # Check if mainfest directory exists
+                        if [ ! -d "mainfest" ]; then
+                            echo "Error: mainfest directory not found!"
+                            exit 1
+                        fi
                         
-                        # Commit and push changes to trigger ArgoCD sync
+                        # Navigate to mainfest directory and update image tag in deployment
+                        echo "Updating image tag in deployment.yaml..."
+                        cd mainfest
+                        
+                        # Check if deployment.yaml exists
+                        if [ ! -f "deployment.yaml" ]; then
+                            echo "Error: deployment.yaml not found in mainfest directory!"
+                            exit 1
+                        fi
+                        
+                        # Update the image tag
+                        sed -i 's|image: omarzaki222/end-to-end-project:.*|image: ${DOCKER_REGISTRY}/${IMAGE_NAME}:${imageTag}|g' deployment.yaml
+                        
+                        # Verify the change was made
+                        echo "Updated deployment.yaml:"
+                        grep "image:" deployment.yaml
+                        
+                        # Go back to root and commit changes
+                        cd ..
                         git config user.email "jenkins@example.com"
                         git config user.name "Jenkins"
                         git add mainfest/deployment.yaml
                         git commit -m "Update image tag to ${imageTag} for ${params.ENVIRONMENT} environment (Build #${BUILD_NUMBER})" || echo "No changes to commit"
                         git push origin main
+                        
+                        echo "Successfully updated manifests repository with image tag: ${imageTag}"
                         
                         # Clean up
                         cd ..
