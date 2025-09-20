@@ -35,9 +35,26 @@ pipeline {
                     env.FULL_IMAGE_NAME = "${DOCKER_REGISTRY}/${IMAGE_NAME}:${imageTag}"
                     
                     sh """
+                        # Check if Docker is available
+                        if ! command -v docker &> /dev/null; then
+                            echo "Docker is not installed or not in PATH"
+                            echo "Please install Docker or configure Jenkins to use Docker"
+                            exit 1
+                        fi
+                        
+                        # Check if Docker daemon is running
+                        if ! docker info &> /dev/null; then
+                            echo "Docker daemon is not running"
+                            echo "Please start Docker daemon or configure Jenkins to access Docker"
+                            exit 1
+                        fi
+                        
+                        echo "Building Docker image: ${env.FULL_IMAGE_NAME}"
                         docker build -t ${env.FULL_IMAGE_NAME} .
                         docker tag ${env.FULL_IMAGE_NAME} ${DOCKER_REGISTRY}/${IMAGE_NAME}:latest
                         docker tag ${env.FULL_IMAGE_NAME} ${DOCKER_REGISTRY}/${IMAGE_NAME}:build-${BUILD_NUMBER}
+                        
+                        echo "Docker image built successfully!"
                     """
                 }
             }
@@ -164,7 +181,14 @@ pipeline {
     
     post {
         always {
-            sh 'docker logout'
+            sh '''
+                # Only logout if Docker is available
+                if command -v docker &> /dev/null; then
+                    docker logout || echo "Docker logout failed or not logged in"
+                else
+                    echo "Docker not available, skipping logout"
+                fi
+            '''
             cleanWs()
         }
         success {
