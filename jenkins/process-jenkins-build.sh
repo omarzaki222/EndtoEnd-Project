@@ -5,11 +5,22 @@
 
 set -e
 
-JENKINS_WORKSPACE=${1:-"/var/jenkins_home/workspace/end-to-end-Project"}
-BUILD_INFO_FILE="${JENKINS_WORKSPACE}/build-info.txt"
+BUILD_NUMBER=${1:-""}
+JENKINS_SHARED_DIR="/var/jenkins_home/shared-builds"
 
-echo "🔍 Processing Jenkins build..."
-echo "Jenkins workspace: ${JENKINS_WORKSPACE}"
+if [ -z "$BUILD_NUMBER" ]; then
+    echo "Usage: $0 <build_number>"
+    echo "Example: $0 7"
+    echo ""
+    echo "Available builds:"
+    ls -la ${JENKINS_SHARED_DIR}/build-info-*.txt 2>/dev/null || echo "No builds found"
+    exit 1
+fi
+
+BUILD_INFO_FILE="${JENKINS_SHARED_DIR}/build-info-${BUILD_NUMBER}.txt"
+
+echo "🔍 Processing Jenkins build #${BUILD_NUMBER}..."
+echo "Build info file: ${BUILD_INFO_FILE}"
 
 # Check if build info file exists
 if [ ! -f "$BUILD_INFO_FILE" ]; then
@@ -20,6 +31,9 @@ fi
 
 # Read build parameters
 source "$BUILD_INFO_FILE"
+
+# Get workspace path from build info
+JENKINS_WORKSPACE=${WORKSPACE_PATH:-"/var/jenkins_home/workspace/end-to-end-Project"}
 
 echo "📋 Build Parameters:"
 echo "  Build Number: ${BUILD_NUMBER}"
@@ -98,15 +112,15 @@ if kubectl get pod kaniko-build-${BUILD_NUMBER} -n jenkins -o jsonpath='{.status
     echo "- ${DOCKER_REGISTRY}/${IMAGE_NAME}:build-${BUILD_NUMBER}"
     
     # Create success marker for Jenkins
-    echo "SUCCESS" > "${JENKINS_WORKSPACE}/build-result.txt"
-    echo "Build completed at: $(date)" >> "${JENKINS_WORKSPACE}/build-result.txt"
+    echo "SUCCESS" > "${JENKINS_SHARED_DIR}/build-result-${BUILD_NUMBER}.txt"
+    echo "Build completed at: $(date)" >> "${JENKINS_SHARED_DIR}/build-result-${BUILD_NUMBER}.txt"
 else
     echo "❌ Kaniko build failed!"
     kubectl describe pod kaniko-build-${BUILD_NUMBER} -n jenkins
     
     # Create failure marker for Jenkins
-    echo "FAILED" > "${JENKINS_WORKSPACE}/build-result.txt"
-    echo "Build failed at: $(date)" >> "${JENKINS_WORKSPACE}/build-result.txt"
+    echo "FAILED" > "${JENKINS_SHARED_DIR}/build-result-${BUILD_NUMBER}.txt"
+    echo "Build failed at: $(date)" >> "${JENKINS_SHARED_DIR}/build-result-${BUILD_NUMBER}.txt"
     exit 1
 fi
 

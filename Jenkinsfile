@@ -42,14 +42,16 @@ pipeline {
                         echo "Build number: ${BUILD_NUMBER}"
                         echo "Full image name: ${env.FULL_IMAGE_NAME}"
                         
-                        # Create a marker file to indicate build parameters
-                        echo "BUILD_NUMBER=${BUILD_NUMBER}" > build-info.txt
-                        echo "IMAGE_TAG=${imageTag}" >> build-info.txt
-                        echo "FULL_IMAGE_NAME=${env.FULL_IMAGE_NAME}" >> build-info.txt
-                        echo "DOCKER_REGISTRY=${DOCKER_REGISTRY}" >> build-info.txt
-                        echo "IMAGE_NAME=${IMAGE_NAME}" >> build-info.txt
+                        # Create a marker file to indicate build parameters in shared directory
+                        mkdir -p /var/jenkins_home/shared-builds
+                        echo "BUILD_NUMBER=${BUILD_NUMBER}" > /var/jenkins_home/shared-builds/build-info-${BUILD_NUMBER}.txt
+                        echo "IMAGE_TAG=${imageTag}" >> /var/jenkins_home/shared-builds/build-info-${BUILD_NUMBER}.txt
+                        echo "FULL_IMAGE_NAME=${env.FULL_IMAGE_NAME}" >> /var/jenkins_home/shared-builds/build-info-${BUILD_NUMBER}.txt
+                        echo "DOCKER_REGISTRY=${DOCKER_REGISTRY}" >> /var/jenkins_home/shared-builds/build-info-${BUILD_NUMBER}.txt
+                        echo "IMAGE_NAME=${IMAGE_NAME}" >> /var/jenkins_home/shared-builds/build-info-${BUILD_NUMBER}.txt
+                        echo "WORKSPACE_PATH=${WORKSPACE}" >> /var/jenkins_home/shared-builds/build-info-${BUILD_NUMBER}.txt
                         
-                        echo "Build parameters saved to build-info.txt"
+                        echo "Build parameters saved to /var/jenkins_home/shared-builds/build-info-${BUILD_NUMBER}.txt"
                         echo "External script should process this build"
                     """
                 }
@@ -76,13 +78,14 @@ pipeline {
                 sh """
                     echo "Verifying that images were pushed successfully..."
                     
-                    # Check if build result file exists
-                    if [ -f "build-result.txt" ]; then
+                    # Check if build result file exists in shared directory
+                    BUILD_RESULT_FILE="/var/jenkins_home/shared-builds/build-result-${BUILD_NUMBER}.txt"
+                    if [ -f "$BUILD_RESULT_FILE" ]; then
                         echo "Build result:"
-                        cat build-result.txt
+                        cat "$BUILD_RESULT_FILE"
                         
                         # Check if build was successful
-                        if grep -q "SUCCESS" build-result.txt; then
+                        if grep -q "SUCCESS" "$BUILD_RESULT_FILE"; then
                             echo "✅ Build completed successfully!"
                             echo "Images should be available at:"
                             echo "- ${env.FULL_IMAGE_NAME}"
@@ -94,7 +97,7 @@ pipeline {
                         fi
                     else
                         echo "⚠️  Build result file not found. External script may not have run yet."
-                        echo "Please run: ./jenkins/process-jenkins-build.sh"
+                        echo "Please run: ./jenkins/process-jenkins-build.sh ${BUILD_NUMBER}"
                         echo "Then restart this pipeline stage."
                         exit 1
                     fi
