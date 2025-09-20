@@ -23,6 +23,7 @@ pipeline {
                         script: 'git rev-parse --short HEAD',
                         returnStdout: true
                     ).trim()
+                    env.BUILD_TAG = "${BUILD_NUMBER}-${env.GIT_COMMIT_SHORT}"
                 }
             }
         }
@@ -30,12 +31,13 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 script {
-                    def imageTag = params.IMAGE_TAG == 'latest' ? "${env.GIT_COMMIT_SHORT}" : params.IMAGE_TAG
+                    def imageTag = params.IMAGE_TAG == 'latest' ? "${env.BUILD_TAG}" : params.IMAGE_TAG
                     env.FULL_IMAGE_NAME = "${DOCKER_REGISTRY}/${IMAGE_NAME}:${imageTag}"
                     
                     sh """
                         docker build -t ${env.FULL_IMAGE_NAME} .
                         docker tag ${env.FULL_IMAGE_NAME} ${DOCKER_REGISTRY}/${IMAGE_NAME}:latest
+                        docker tag ${env.FULL_IMAGE_NAME} ${DOCKER_REGISTRY}/${IMAGE_NAME}:build-${BUILD_NUMBER}
                     """
                 }
             }
@@ -60,18 +62,23 @@ pipeline {
                             echo \$DOCKER_PASSWORD | docker login -u \$DOCKER_USERNAME --password-stdin
                             docker push ${env.FULL_IMAGE_NAME}
                             docker push ${DOCKER_REGISTRY}/${IMAGE_NAME}:latest
+                            docker push ${DOCKER_REGISTRY}/${IMAGE_NAME}:build-${BUILD_NUMBER}
                         """
                     }
                 }
             }
         }
         
-        stage('Update Git Repository') {
+        stage('Update Manifests Repository') {
             steps {
                 script {
-                    def imageTag = params.IMAGE_TAG == 'latest' ? "${env.GIT_COMMIT_SHORT}" : params.IMAGE_TAG
+                    def imageTag = params.IMAGE_TAG == 'latest' ? "${env.BUILD_TAG}" : params.IMAGE_TAG
                     
                     sh """
+                        # Clone the manifests repository
+                        git clone https://github.com/omarzaki222/EndtoEnd-Project-Manifests.git manifests-repo
+                        cd manifests-repo
+                        
                         # Update image tag in deployment
                         sed -i 's|image: omarzaki222/end-to-end-project:.*|image: ${DOCKER_REGISTRY}/${IMAGE_NAME}:${imageTag}|g' mainfest/deployment.yaml
                         
@@ -79,8 +86,12 @@ pipeline {
                         git config user.email "jenkins@example.com"
                         git config user.name "Jenkins"
                         git add mainfest/deployment.yaml
-                        git commit -m "Update image tag to ${imageTag} for ${params.ENVIRONMENT} environment" || echo "No changes to commit"
+                        git commit -m "Update image tag to ${imageTag} for ${params.ENVIRONMENT} environment (Build #${BUILD_NUMBER})" || echo "No changes to commit"
                         git push origin main
+                        
+                        # Clean up
+                        cd ..
+                        rm -rf manifests-repo
                     """
                 }
             }
@@ -133,8 +144,10 @@ pipeline {
         success {
             echo "Pipeline completed successfully!"
             script {
-                def imageTag = params.IMAGE_TAG == 'latest' ? "${env.GIT_COMMIT_SHORT}" : params.IMAGE_TAG
+                def imageTag = params.IMAGE_TAG == 'latest' ? "${env.BUILD_TAG}" : params.IMAGE_TAG
                 echo "Deployed image: ${DOCKER_REGISTRY}/${IMAGE_NAME}:${imageTag}"
+                echo "Build number: ${BUILD_NUMBER}"
+                echo "Git commit: ${env.GIT_COMMIT_SHORT}"
             }
         }
         failure {
