@@ -37,22 +37,73 @@ pipeline {
 
                     sh """
                         echo "Building Docker image with Kaniko: ${env.FULL_IMAGE_NAME}"
-                        echo "Note: This stage will be handled by external script"
                         echo "Image tag: ${imageTag}"
                         echo "Build number: ${BUILD_NUMBER}"
                         echo "Full image name: ${env.FULL_IMAGE_NAME}"
                         
-                        # Create a marker file to indicate build parameters in shared directory
-                        mkdir -p /var/jenkins_home/shared-builds
-                        echo "BUILD_NUMBER=${BUILD_NUMBER}" > /var/jenkins_home/shared-builds/build-info-${BUILD_NUMBER}.txt
-                        echo "IMAGE_TAG=${imageTag}" >> /var/jenkins_home/shared-builds/build-info-${BUILD_NUMBER}.txt
-                        echo "FULL_IMAGE_NAME=${env.FULL_IMAGE_NAME}" >> /var/jenkins_home/shared-builds/build-info-${BUILD_NUMBER}.txt
-                        echo "DOCKER_REGISTRY=${DOCKER_REGISTRY}" >> /var/jenkins_home/shared-builds/build-info-${BUILD_NUMBER}.txt
-                        echo "IMAGE_NAME=${IMAGE_NAME}" >> /var/jenkins_home/shared-builds/build-info-${BUILD_NUMBER}.txt
-                        echo "WORKSPACE_PATH=${WORKSPACE}" >> /var/jenkins_home/shared-builds/build-info-${BUILD_NUMBER}.txt
+                        # Create Kaniko build YAML
+                        cat > kaniko-build-${BUILD_NUMBER}.yaml << 'EOF'
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kaniko-build-${BUILD_NUMBER}
+  namespace: jenkins
+spec:
+  restartPolicy: Never
+  containers:
+  - name: kaniko-build
+    image: gcr.io/kaniko-project/executor:latest
+    args:
+    - "--context=dir:///workspace"
+    - "--dockerfile=/workspace/Dockerfile"
+    - "--destination=${DOCKER_REGISTRY}/${IMAGE_NAME}:${imageTag}"
+    - "--destination=${DOCKER_REGISTRY}/${IMAGE_NAME}:latest"
+    - "--destination=${DOCKER_REGISTRY}/${IMAGE_NAME}:build-${BUILD_NUMBER}"
+    - "--cache=true"
+    - "--cache-ttl=24h"
+    volumeMounts:
+    - name: docker-config
+      mountPath: /kaniko/.docker
+    - name: build-context
+      mountPath: /workspace
+  volumes:
+  - name: docker-config
+    secret:
+      secretName: docker-registry-secret
+  - name: build-context
+    hostPath:
+      path: ${WORKSPACE}
+EOF
+
+                        # Apply the Kaniko build pod using kubectl from Jenkins pod
+                        kubectl apply -f kaniko-build-${BUILD_NUMBER}.yaml
                         
-                        echo "Build parameters saved to /var/jenkins_home/shared-builds/build-info-${BUILD_NUMBER}.txt"
-                        echo "External script should process this build"
+                        # Wait for the pod to complete
+                        echo "Waiting for Kaniko build to complete..."
+                        kubectl wait --for=condition=Ready pod/kaniko-build-${BUILD_NUMBER} -n jenkins --timeout=600s || echo "Pod not ready, checking logs"
+                        
+                        # Get pod logs
+                        echo "Kaniko build logs:"
+                        kubectl logs kaniko-build-${BUILD_NUMBER} -n jenkins
+                        
+                        # Check if build was successful
+                        if kubectl get pod kaniko-build-${BUILD_NUMBER} -n jenkins -o jsonpath='{.status.phase}' | grep -q "Succeeded"; then
+                            echo "✅ Kaniko build completed successfully!"
+                            echo "Images pushed:"
+                            echo "- ${DOCKER_REGISTRY}/${IMAGE_NAME}:${imageTag}"
+                            echo "- ${DOCKER_REGISTRY}/${IMAGE_NAME}:latest"
+                            echo "- ${DOCKER_REGISTRY}/${IMAGE_NAME}:build-${BUILD_NUMBER}"
+                        else
+                            echo "❌ Kaniko build failed!"
+                            kubectl describe pod kaniko-build-${BUILD_NUMBER} -n jenkins
+                            exit 1
+                        fi
+                        
+                        # Clean up the pod
+                        kubectl delete pod kaniko-build-${BUILD_NUMBER} -n jenkins
+                        rm -f kaniko-build-${BUILD_NUMBER}.yaml
+                        
+                        echo "Kaniko build completed successfully!"
                     """
                 }
             }
@@ -76,31 +127,11 @@ pipeline {
         stage('Verify Image Push') {
             steps {
                 sh """
-                    echo "Verifying that images were pushed successfully..."
-                    
-                    # Check if build result file exists in shared directory
-                    BUILD_RESULT_FILE="/var/jenkins_home/shared-builds/build-result-${BUILD_NUMBER}.txt"
-                    if [ -f "$BUILD_RESULT_FILE" ]; then
-                        echo "Build result:"
-                        cat "$BUILD_RESULT_FILE"
-                        
-                        # Check if build was successful
-                        if grep -q "SUCCESS" "$BUILD_RESULT_FILE"; then
-                            echo "✅ Build completed successfully!"
-                            echo "Images should be available at:"
-                            echo "- ${env.FULL_IMAGE_NAME}"
-                            echo "- ${DOCKER_REGISTRY}/${IMAGE_NAME}:latest"
-                            echo "- ${DOCKER_REGISTRY}/${IMAGE_NAME}:build-${BUILD_NUMBER}"
-                        else
-                            echo "❌ Build failed!"
-                            exit 1
-                        fi
-                    else
-                        echo "⚠️  Build result file not found. External script may not have run yet."
-                        echo "Please run: ./jenkins/process-jenkins-build.sh ${BUILD_NUMBER}"
-                        echo "Then restart this pipeline stage."
-                        exit 1
-                    fi
+                    echo "✅ Images were built and pushed successfully in the previous stage!"
+                    echo "Images are available at:"
+                    echo "- ${env.FULL_IMAGE_NAME}"
+                    echo "- ${DOCKER_REGISTRY}/${IMAGE_NAME}:latest"
+                    echo "- ${DOCKER_REGISTRY}/${IMAGE_NAME}:build-${BUILD_NUMBER}"
                 """
             }
         }
