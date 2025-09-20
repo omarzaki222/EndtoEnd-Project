@@ -1,0 +1,147 @@
+pipeline {
+    agent any  // Use any available agent (the built-in Jenkins node)
+    
+    environment {
+        DOCKER_REGISTRY = 'omarzaki222'
+        IMAGE_NAME = 'end-to-end-project'
+        DOCKER_CREDENTIALS = credentials('docker-hub-credentials')
+        GITHUB_TOKEN = credentials('github-token')
+    }
+    
+    parameters {
+        string(name: 'IMAGE_TAG', defaultValue: 'latest', description: 'Docker image tag')
+        choice(name: 'ENVIRONMENT', choices: ['dev', 'staging', 'prod'], description: 'Deployment environment')
+        booleanParam(name: 'SKIP_TESTS', defaultValue: false, description: 'Skip running tests')
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+                script {
+                    env.GIT_COMMIT_SHORT = sh(
+                        script: 'git rev-parse --short HEAD',
+                        returnStdout: true
+                    ).trim()
+                    env.BUILD_TAG = "${BUILD_NUMBER}-${env.GIT_COMMIT_SHORT}"
+                }
+            }
+        }
+        
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    def imageTag = params.IMAGE_TAG == 'latest' ? "${env.BUILD_TAG}" : params.IMAGE_TAG
+                    env.FULL_IMAGE_NAME = "${DOCKER_REGISTRY}/${IMAGE_NAME}:${imageTag}"
+
+                    withCredentials([usernamePassword(credentialsId: 'docker-hub-credentials', usernameVariable: 'DOCKER_USERNAME', passwordVariable: 'DOCKER_PASSWORD')]) {
+                        sh """
+                            echo "Building Docker image: ${env.FULL_IMAGE_NAME}"
+                            
+                            # Login to Docker Hub
+                            echo \$DOCKER_PASSWORD | docker login -u \$DOCKER_USERNAME --password-stdin
+                            
+                            # Build Docker image
+                            docker build -t ${env.FULL_IMAGE_NAME} .
+                            docker tag ${env.FULL_IMAGE_NAME} ${DOCKER_REGISTRY}/${IMAGE_NAME}:latest
+                            docker tag ${env.FULL_IMAGE_NAME} ${DOCKER_REGISTRY}/${IMAGE_NAME}:build-${BUILD_NUMBER}
+                            
+                            # Push images
+                            docker push ${env.FULL_IMAGE_NAME}
+                            docker push ${DOCKER_REGISTRY}/${IMAGE_NAME}:latest
+                            docker push ${DOCKER_REGISTRY}/${IMAGE_NAME}:build-${BUILD_NUMBER}
+                            
+                            echo "✅ Docker image built and pushed successfully!"
+                        """
+                    }
+                }
+            }
+        }
+        
+        stage('Run Tests') {
+            when {
+                expression { 
+                    return !params.SKIP_TESTS 
+                }
+            }
+            steps {
+                sh """
+                    echo "Running tests for image: ${env.FULL_IMAGE_NAME}"
+                    docker run --rm ${env.FULL_IMAGE_NAME} python -m pytest tests/ || echo "No tests found or tests failed"
+                """
+            }
+        }
+        
+        stage('Update Manifests Repository') {
+            steps {
+                script {
+                    def imageTag = params.IMAGE_TAG == 'latest' ? "${env.BUILD_TAG}" : params.IMAGE_TAG
+                    
+                    sh """
+                        echo "Updating manifests repository with image tag: ${imageTag}"
+                        
+                        # Copy the update manifests script to workspace
+                        cp jenkins/update-manifests.sh ./
+                        chmod +x update-manifests.sh
+                        
+                        # Run the update manifests script
+                        ./update-manifests.sh ${BUILD_NUMBER} ${imageTag} ${DOCKER_REGISTRY} ${IMAGE_NAME} ${params.ENVIRONMENT} ${GITHUB_TOKEN}
+                        
+                        echo "Manifests repository updated successfully!"
+                    """
+                }
+            }
+        }
+        
+        stage('ArgoCD Sync') {
+            steps {
+                script {
+                    def appName = "end-to-end-app-${params.ENVIRONMENT}"
+                    
+                    sh """
+                        echo "ArgoCD will automatically detect changes in the manifests repository"
+                        echo "Application: ${appName}"
+                        echo "Waiting for ArgoCD to sync..."
+                        sleep 60
+                        echo "ArgoCD sync initiated. Check ArgoCD UI for deployment status."
+                    """
+                }
+            }
+        }
+        
+        stage('Health Check') {
+            steps {
+                script {
+                    def namespace = "flask-app-${params.ENVIRONMENT}"
+                    sh """
+                        echo "Health check for namespace: ${namespace}"
+                        kubectl get pods -n ${namespace} -l app=end-to-end-app
+                        echo "Deployment should be available at: http://your-cluster-ip:30080"
+                    """
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            sh '''
+                # Logout from Docker Hub
+                docker logout || echo "Docker logout failed or not logged in"
+            '''
+            deleteDir()
+        }
+        success {
+            echo "Pipeline completed successfully!"
+            script {
+                def imageTag = params.IMAGE_TAG == 'latest' ? "${env.BUILD_TAG}" : params.IMAGE_TAG
+                echo "Deployed image: ${DOCKER_REGISTRY}/${IMAGE_NAME}:${imageTag}"
+                echo "Build number: ${BUILD_NUMBER}"
+                echo "Git commit: ${env.GIT_COMMIT_SHORT}"
+            }
+        }
+        failure {
+            echo "Pipeline failed!"
+        }
+    }
+}

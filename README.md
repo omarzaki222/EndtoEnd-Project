@@ -1,6 +1,6 @@
-# End-to-End Python Flask Application
+# End-to-End Python Flask Application with Complete CI/CD Pipeline
 
-A complete Python Flask application with CI/CD pipeline using Jenkins and Kubernetes deployment.
+A comprehensive Python Flask application with full CI/CD pipeline using Jenkins, Docker, Kubernetes, and ArgoCD GitOps deployment.
 
 ## 🚀 Features
 
@@ -12,6 +12,7 @@ A complete Python Flask application with CI/CD pipeline using Jenkins and Kubern
 - **Multi-Environment Support**: Dev, staging, and production environments
 - **Persistent Storage**: PVC and PV configuration for data persistence
 - **Health Checks**: Liveness and readiness probes for container health
+- **Ubuntu Jenkins Server**: Jenkins running directly on Ubuntu with Docker and kubectl access
 
 ## 📁 Project Structure
 
@@ -30,10 +31,22 @@ pythonapp/
 │   ├── service.yaml             # Service configuration
 │   ├── ingress.yaml             # Ingress configuration
 │   └── kustomization.yaml       # Kustomize configuration
-├── jenkins/                      # Jenkins pipeline files
-│   ├── pipeline-config.xml      # Jenkins job configuration
-│   ├── deploy.sh                # Deployment script
-│   └── build-and-push.sh        # Docker build and push script
+├── jenkins/                      # Jenkins pipeline and setup files
+│   ├── Jenkinsfile              # Main Jenkins pipeline
+│   ├── Jenkinsfile-agent        # Agent-based Jenkins pipeline
+│   ├── install-jenkins-ubuntu.sh # Jenkins installation script
+│   ├── fix-jenkins-java.sh      # Java version fix script
+│   ├── fix-docker-permissions.sh # Docker permissions fix
+│   ├── update-manifests.sh      # Manifests update script
+│   ├── build-and-push.sh        # Docker build and push script
+│   ├── kaniko-build.sh          # Kaniko build script
+│   ├── process-jenkins-build.sh # External build processor
+│   ├── monitor-jenkins-builds.sh # Build monitor script
+│   ├── setup-github-credentials.sh # GitHub credentials setup
+│   ├── JENKINS_PIPELINE_SETUP.md # Pipeline setup guide
+│   ├── JENKINS_ACCESS_FIX.md    # Access troubleshooting
+│   ├── MANUAL_JENKINS_INSTALL.md # Manual installation guide
+│   └── DOCKER_TROUBLESHOOTING.md # Docker troubleshooting
 ├── argocd/                       # ArgoCD GitOps configuration
 │   ├── application.yaml         # Main ArgoCD application
 │   ├── application-dev.yaml     # Development environment
@@ -42,117 +55,216 @@ pythonapp/
 │   ├── install-argocd.sh        # ArgoCD installation script
 │   └── setup-applications.sh    # Application setup script
 ├── Dockerfile                    # Docker container configuration
-├── Jenkinsfile                   # Jenkins pipeline definition
-├── requirements.txt              # Python dependencies
-├── README.md                     # This file
-├── ARGOCD_SETUP.md              # ArgoCD setup guide
-└── PROJECT_NOTES.md             # Comprehensive project notes
+├── .dockerignore                # Docker ignore file
+├── .gitignore                   # Git ignore file
+├── env.example                  # Environment variables template
+├── env.local                    # Local environment variables (not committed)
+├── setup-env.sh                 # Environment setup script
+├── setup-github.sh              # GitHub repository setup
+├── setup-credentials.sh         # Credentials setup guide
+├── README.md                    # This file
+├── ARGOCD_SETUP.md             # ArgoCD setup guide
+├── JENKINS_SETUP.md            # Jenkins setup guide
+└── PROJECT_NOTES.md            # Comprehensive project notes
 ```
 
 ## 🛠️ Prerequisites
 
+- **Ubuntu Machine**: For Jenkins server (workernode2)
 - **Docker**: For containerization
 - **Kubernetes**: For orchestration (v1.30.13)
-- **Jenkins**: For CI/CD pipeline
+- **Jenkins**: For CI/CD pipeline (installed on Ubuntu)
 - **kubectl**: Kubernetes command-line tool
 - **Git**: For version control
+- **Java 17+**: Required for Jenkins
 
-## 🚀 Quick Start
+## 🚀 Complete Setup Guide
 
-### 1. Clone the Repository
+### 1. Environment Setup
 
+#### Clone and Configure Repository
 ```bash
-git clone <your-repo-url>
-cd pythonapp
+# Clone the repository
+git clone https://github.com/omarzaki222/EndtoEnd-Project.git
+cd EndtoEnd-Project
+
+# Set up environment variables
+cp env.example env.local
+# Edit env.local with your actual credentials
 ```
 
-### 2. Build and Run Locally
-
+#### Configure Environment Variables (`env.local`)
 ```bash
-# Build Docker image
-docker build -t end-to-end-app .
+# Docker Hub Configuration
+DOCKER_USERNAME=your_dockerhub_username
+DOCKER_PASSWORD=your_dockerhub_password
+DOCKER_REGISTRY=your_dockerhub_username
 
-# Run container
-docker run -p 8000:8000 end-to-end-app
+# GitHub Configuration
+GITHUB_USERNAME=your_github_username
+GITHUB_TOKEN=your_github_token
+
+# Application Configuration
+APP_ENV=production
+LOG_LEVEL=INFO
+FLASK_ENV=production
 ```
 
-### 3. Deploy to Kubernetes
+### 2. Jenkins Server Installation
 
+#### Install Jenkins on Ubuntu
 ```bash
-# Apply all manifests
-kubectl apply -f mainfest/
+# Update system
+sudo apt update
 
-# Check deployment status
-kubectl get pods -n flask-app
-kubectl get svc -n flask-app
+# Install Java 17 (required for Jenkins)
+sudo apt install -y openjdk-17-jdk
+
+# Add Jenkins repository
+curl -fsSL https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key | sudo tee /usr/share/keyrings/jenkins-keyring.asc > /dev/null
+echo deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc] https://pkg.jenkins.io/debian-stable binary/ | sudo tee /etc/apt/sources.list.d/jenkins.list > /dev/null
+
+# Install Jenkins
+sudo apt update
+sudo apt install -y jenkins
+
+# Start and enable Jenkins
+sudo systemctl start jenkins
+sudo systemctl enable jenkins
 ```
 
-### 4. Set up ArgoCD GitOps (Optional)
+#### Configure Jenkins for Network Access
+```bash
+# Edit Jenkins configuration
+sudo nano /etc/default/jenkins
 
+# Add --httpListenAddress=0.0.0.0 to JENKINS_ARGS
+JENKINS_ARGS="--webroot=/var/cache/$NAME/war --httpPort=$HTTP_PORT --httpListenAddress=0.0.0.0"
+
+# Restart Jenkins
+sudo systemctl restart jenkins
+```
+
+#### Fix Docker Permissions
+```bash
+# Add Jenkins user to docker group
+sudo usermod -aG docker jenkins
+
+# Alternative: Fix Docker socket permissions
+sudo chmod 666 /var/run/docker.sock
+
+# Restart Jenkins
+sudo systemctl restart jenkins
+```
+
+### 3. Jenkins Initial Setup
+
+#### Access Jenkins
+- **URL**: `http://YOUR_IP:8080`
+- **Initial Password**: `sudo cat /var/lib/jenkins/secrets/initialAdminPassword`
+
+#### Complete Jenkins Setup
+1. **Enter initial admin password**
+2. **Install suggested plugins**
+3. **Create admin user**
+4. **Configure Jenkins URL** (keep default)
+
+### 4. Configure Jenkins Credentials
+
+Go to **Manage Jenkins** → **Manage Credentials** → **Add credentials**:
+
+#### Docker Hub Credentials
+- **Kind**: Username with password
+- **ID**: `docker-hub-credentials`
+- **Username**: Your Docker Hub username
+- **Password**: Your Docker Hub password
+
+#### GitHub Token
+- **Kind**: Secret text
+- **ID**: `github-token`
+- **Secret**: Your GitHub personal access token
+
+### 5. Create Jenkins Pipeline Job
+
+1. **Click "New Item"**
+2. **Enter name**: `end-to-end-project`
+3. **Select "Pipeline"**
+4. **Click "OK"**
+5. **In Pipeline section**:
+   - **Definition**: `Pipeline script from SCM`
+   - **SCM**: `Git`
+   - **Repository URL**: `https://github.com/omarzaki222/EndtoEnd-Project.git`
+   - **Branch**: `*/main`
+   - **Script Path**: `Jenkinsfile`
+
+### 6. Set Up Separate Manifests Repository
+
+#### Create Manifests Repository
+```bash
+# Clone the manifests repository
+git clone https://github.com/omarzaki222/EndtoEnd-Project-Manifests.git
+cd EndtoEnd-Project-Manifests
+
+# Copy manifests from main repository
+cp -r ../EndtoEnd-Project/mainfest ./
+cp -r ../EndtoEnd-Project/argocd ./
+
+# Commit and push
+git add .
+git commit -m "Initial manifests setup"
+git push origin main
+```
+
+### 7. ArgoCD Setup (Optional)
+
+#### Install ArgoCD
 ```bash
 # Install ArgoCD
-./argocd/install-argocd.sh
+kubectl create namespace argocd
+kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 
-# Create ArgoCD applications
-./argocd/setup-applications.sh
-
-# Access ArgoCD UI
+# Access ArgoCD
 kubectl port-forward svc/argocd-server -n argocd 8080:443
 # Open: https://localhost:8080
 ```
 
-### 5. Access the Application
-
+#### Create ArgoCD Applications
 ```bash
-# Get service details
-kubectl get svc end-to-end-service -n flask-app
-
-# Port forward for local access
-kubectl port-forward svc/end-to-end-service 8000:8000 -n flask-app
+# Apply ArgoCD applications
+kubectl apply -f argocd/application.yaml
+kubectl apply -f argocd/application-dev.yaml
+kubectl apply -f argocd/application-staging.yaml
+kubectl apply -f argocd/application-prod.yaml
 ```
 
-## 🔧 Jenkins Pipeline Setup
-
-### Required Jenkins Plugins
-
-- Pipeline
-- Docker Pipeline
-- Kubernetes CLI
-- Git
-
-### Required Credentials
-
-1. **Docker Hub Credentials** (`docker-hub-credentials`)
-   - Username: Your Docker Hub username
-   - Password: Your Docker Hub password/token
-
-2. **Kubernetes Config** (`kubeconfig`)
-   - Upload your kubeconfig file
-
-3. **GitHub Credentials** (`github-credentials`)
-   - Username: Your GitHub username
-   - Password: Your GitHub personal access token
-
-### Pipeline Configuration
-
-1. Create a new Pipeline job in Jenkins
-2. Configure the pipeline to use the `Jenkinsfile` from SCM
-3. Set up the required credentials
-4. Configure webhook triggers (optional)
+## 🔄 CI/CD Pipeline Flow
 
 ### Pipeline Stages
 
-1. **Checkout**: Clone the repository
-2. **Build Docker Image**: Build and tag the Docker image
+1. **Checkout**: Clone code from GitHub
+2. **Build Docker Image**: Build with build number tag
 3. **Run Tests**: Execute application tests (optional)
-4. **Push to Registry**: Push image to Docker Hub
-5. **Deploy to Kubernetes**: Deploy to K8s cluster
+4. **Update Manifests Repository**: Update image tag in manifests
+5. **ArgoCD Sync**: Trigger ArgoCD deployment
 6. **Health Check**: Verify deployment success
+
+### Pipeline Features
+
+- **Automatic Image Tagging**: Uses build number and Git commit hash
+- **Multi-Environment Support**: Dev, staging, production
+- **GitOps Integration**: Updates manifests repository
+- **Health Monitoring**: Verifies deployment status
+- **Rollback Capability**: Easy rollback through ArgoCD
+
+### Pipeline Parameters
+
+- `IMAGE_TAG`: Docker image tag (default: latest)
+- `ENVIRONMENT`: Deployment environment (dev/staging/prod)
+- `SKIP_TESTS`: Skip running tests (default: false)
 
 ## 🐳 Docker Configuration
 
-The application uses a multi-stage Docker build:
-
+### Multi-stage Docker Build
 ```dockerfile
 FROM python:3.11-slim
 WORKDIR /app
@@ -163,10 +275,17 @@ EXPOSE 8000
 CMD ["gunicorn", "--bind", "0.0.0.0:8000", "app.main:app", "--workers", "2", "--timeout", "120"]
 ```
 
+### Image Tagging Strategy
+- **Build Tag**: `BUILD_NUMBER-GIT_COMMIT_SHORT`
+- **Latest**: `latest`
+- **Build Specific**: `build-BUILD_NUMBER`
+
 ## ☸️ Kubernetes Configuration
 
-### Namespace
-- **flask-app**: Isolated namespace for the application
+### Namespace Structure
+- **flask-app-dev**: Development environment
+- **flask-app-staging**: Staging environment
+- **flask-app-prod**: Production environment
 
 ### Resources
 - **ConfigMap**: Application configuration
@@ -180,112 +299,125 @@ CMD ["gunicorn", "--bind", "0.0.0.0:8000", "app.main:app", "--workers", "2", "--
 - **Memory**: 128Mi request, 256Mi limit
 - **CPU**: 100m request, 200m limit
 
-## 🔄 CI/CD Pipeline
+## 🔧 Troubleshooting
 
-The Jenkins pipeline supports:
+### Common Issues and Solutions
 
-- **Multi-environment deployment** (dev, staging, prod)
-- **Automatic image tagging** with Git commit hash
-- **Rolling deployments** with health checks
-- **Build artifact management**
-- **Notification on success/failure**
+#### 1. Jenkins Agent Issues
+**Problem**: `'Jenkins' doesn't have label 'docker kubectl ubuntu'`
+**Solution**: Use `agent any` in Jenkinsfile
 
-### Pipeline Parameters
-
-- `IMAGE_TAG`: Docker image tag (default: latest)
-- `ENVIRONMENT`: Deployment environment (dev/staging/prod)
-- `SKIP_TESTS`: Skip running tests (default: false)
-
-## 📊 Monitoring and Health Checks
-
-### Health Probes
-
-- **Liveness Probe**: HTTP GET on `/` every 10 seconds
-- **Readiness Probe**: HTTP GET on `/` every 5 seconds
-
-### Monitoring Commands
-
+#### 2. Docker Permission Denied
+**Problem**: `permission denied while trying to connect to the Docker daemon socket`
+**Solution**:
 ```bash
-# Check pod status
-kubectl get pods -n flask-app -l app=end-to-end-app
-
-# Check service endpoints
-kubectl get endpoints -n flask-app
-
-# View application logs
-kubectl logs -f deployment/end-to-end-app -n flask-app
-
-# Check resource usage
-kubectl top pods -n flask-app
+sudo usermod -aG docker jenkins
+sudo systemctl restart jenkins
+# OR
+sudo chmod 666 /var/run/docker.sock
 ```
 
-## 🔧 Configuration
+#### 3. Java Version Issues
+**Problem**: `Running with Java 11, which is older than the minimum required version (Java 17)`
+**Solution**:
+```bash
+sudo apt install -y openjdk-17-jdk
+sudo update-alternatives --config java
+```
 
-### Environment Variables
-
-- `APP_ENV`: Application environment (production)
-- `LOG_LEVEL`: Logging level (INFO)
-- `FLASK_ENV`: Flask environment (production)
-
-### Customization
-
-1. **Update Docker image**: Modify `Dockerfile`
-2. **Change resource limits**: Edit `mainfest/deployment.yaml`
-3. **Modify pipeline**: Update `Jenkinsfile`
-4. **Add new environments**: Update pipeline parameters
-
-## 🚨 Troubleshooting
-
-### Common Issues
-
-1. **Pod not starting**:
-   ```bash
-   kubectl describe pod <pod-name> -n flask-app
-   kubectl logs <pod-name> -n flask-app
-   ```
-
-2. **Service not accessible**:
-   ```bash
-   kubectl get svc -n flask-app
-   kubectl get endpoints -n flask-app
-   ```
-
-3. **Pipeline failures**:
-   - Check Jenkins logs
-   - Verify credentials are configured
-   - Ensure Docker and kubectl are available
+#### 4. Jenkins Access Issues
+**Problem**: Cannot access Jenkins from external machine
+**Solution**:
+```bash
+# Edit Jenkins configuration
+sudo nano /etc/default/jenkins
+# Add --httpListenAddress=0.0.0.0
+sudo systemctl restart jenkins
+```
 
 ### Debug Commands
 
 ```bash
-# Check cluster connectivity
-kubectl cluster-info
+# Check Jenkins status
+sudo systemctl status jenkins
 
-# Verify namespace exists
-kubectl get namespaces
+# Check Docker permissions
+sudo -u jenkins docker version
 
-# Check persistent volumes
-kubectl get pv,pvc -n flask-app
+# Check kubectl access
+kubectl get nodes
 
-# View all resources
-kubectl get all -n flask-app
+# Check Jenkins logs
+sudo journalctl -u jenkins -f
+
+# Check Docker daemon
+docker version
 ```
 
-## 📝 Contributing
+## 📊 Monitoring and Health Checks
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test the pipeline
-5. Submit a pull request
+### Health Probes
+- **Liveness Probe**: HTTP GET on `/` every 10 seconds
+- **Readiness Probe**: HTTP GET on `/` every 5 seconds
 
-## 📄 License
+### Monitoring Commands
+```bash
+# Check pod status
+kubectl get pods -n flask-app-dev -l app=end-to-end-app
 
-This project is licensed under the MIT License.
+# Check service endpoints
+kubectl get endpoints -n flask-app-dev
+
+# View application logs
+kubectl logs -f deployment/end-to-end-app -n flask-app-dev
+
+# Check resource usage
+kubectl top pods -n flask-app-dev
+```
+
+## 🎯 Access Information
+
+### Jenkins
+- **URL**: `http://192.168.0.103:8080`
+- **Admin Password**: `066a5ee2229c4ffb8ac15b75ae2090cf`
+
+### Application
+- **Development**: `http://YOUR_CLUSTER_IP:30080`
+- **Staging**: `http://YOUR_CLUSTER_IP:30081`
+- **Production**: `http://YOUR_CLUSTER_IP:30082`
+
+### ArgoCD
+- **URL**: `https://localhost:8080` (with port-forward)
+- **Username**: `admin`
+- **Password**: `kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d`
+
+## 📝 Project Evolution
+
+### What We Built
+1. **Complete Flask Application** with Docker containerization
+2. **Kubernetes Manifests** for multi-environment deployment
+3. **Jenkins CI/CD Pipeline** with automated builds and deployments
+4. **ArgoCD GitOps** for continuous deployment
+5. **Ubuntu Jenkins Server** with Docker and kubectl access
+6. **Separate Manifests Repository** for GitOps workflow
+7. **Comprehensive Documentation** and troubleshooting guides
+
+### Key Achievements
+- ✅ **Full CI/CD Pipeline** from code to production
+- ✅ **Multi-Environment Support** (dev, staging, prod)
+- ✅ **GitOps Workflow** with ArgoCD
+- ✅ **Automated Image Tagging** with build numbers
+- ✅ **Health Monitoring** and rollback capabilities
+- ✅ **Complete Documentation** and setup guides
 
 ## 🆘 Support
 
 For support and questions:
-- Create an issue in the repository
-- Check the troubleshooting section
+- Check the troubleshooting section above
 - Review Jenkins and Kubernetes logs
+- Consult the comprehensive guides in the `jenkins/` directory
+- Create an issue in the repository
+
+## 📄 License
+
+This project is licensed under the MIT License.
