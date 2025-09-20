@@ -37,15 +37,20 @@ pipeline {
 
                     sh """
                         echo "Building Docker image with Kaniko: ${env.FULL_IMAGE_NAME}"
+                        echo "Note: This stage will be handled by external script"
+                        echo "Image tag: ${imageTag}"
+                        echo "Build number: ${BUILD_NUMBER}"
+                        echo "Full image name: ${env.FULL_IMAGE_NAME}"
                         
-                        # Copy the Kaniko build script to workspace
-                        cp jenkins/kaniko-build.sh ./
-                        chmod +x kaniko-build.sh
+                        # Create a marker file to indicate build parameters
+                        echo "BUILD_NUMBER=${BUILD_NUMBER}" > build-info.txt
+                        echo "IMAGE_TAG=${imageTag}" >> build-info.txt
+                        echo "FULL_IMAGE_NAME=${env.FULL_IMAGE_NAME}" >> build-info.txt
+                        echo "DOCKER_REGISTRY=${DOCKER_REGISTRY}" >> build-info.txt
+                        echo "IMAGE_NAME=${IMAGE_NAME}" >> build-info.txt
                         
-                        # Run the Kaniko build script
-                        ./kaniko-build.sh ${BUILD_NUMBER} ${imageTag} ${DOCKER_REGISTRY} ${IMAGE_NAME} ${WORKSPACE}
-                        
-                        echo "Kaniko build completed successfully!"
+                        echo "Build parameters saved to build-info.txt"
+                        echo "External script should process this build"
                     """
                 }
             }
@@ -70,11 +75,29 @@ pipeline {
             steps {
                 sh """
                     echo "Verifying that images were pushed successfully..."
-                    echo "Images should be available at:"
-                    echo "- ${env.FULL_IMAGE_NAME}"
-                    echo "- ${DOCKER_REGISTRY}/${IMAGE_NAME}:latest"
-                    echo "- ${DOCKER_REGISTRY}/${IMAGE_NAME}:build-${BUILD_NUMBER}"
-                    echo "Kaniko automatically pushes images during the build stage."
+                    
+                    # Check if build result file exists
+                    if [ -f "build-result.txt" ]; then
+                        echo "Build result:"
+                        cat build-result.txt
+                        
+                        # Check if build was successful
+                        if grep -q "SUCCESS" build-result.txt; then
+                            echo "✅ Build completed successfully!"
+                            echo "Images should be available at:"
+                            echo "- ${env.FULL_IMAGE_NAME}"
+                            echo "- ${DOCKER_REGISTRY}/${IMAGE_NAME}:latest"
+                            echo "- ${DOCKER_REGISTRY}/${IMAGE_NAME}:build-${BUILD_NUMBER}"
+                        else
+                            echo "❌ Build failed!"
+                            exit 1
+                        fi
+                    else
+                        echo "⚠️  Build result file not found. External script may not have run yet."
+                        echo "Please run: ./jenkins/process-jenkins-build.sh"
+                        echo "Then restart this pipeline stage."
+                        exit 1
+                    fi
                 """
             }
         }
